@@ -16,6 +16,7 @@
 package org.araqne.snmp;
 
 import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -23,6 +24,7 @@ import java.util.Map;
 import java.util.Vector;
 
 import org.araqne.api.Script;
+import org.araqne.api.ScriptArgument;
 import org.araqne.api.ScriptContext;
 import org.araqne.api.ScriptUsage;
 import org.snmp4j.CommunityTarget;
@@ -50,11 +52,47 @@ public class SnmpScript implements Script {
 		this.context = context;
 	}
 
-	public void trapbindings(String[] args) {
+	public void trapBindings(String[] args) {
 		context.println("Trap Bindings");
 		context.println("---------------");
 		for (String name : trap.getBindingNames())
 			context.println(name + " => " + trap.getBinding(name));
+	}
+
+	@ScriptUsage(description = "open trap port", arguments = {
+			@ScriptArgument(name = "name", type = "string", description = "trap binding name"),
+			@ScriptArgument(name = "port", type = "int", description = "trap port (162 by default)", optional = true),
+			@ScriptArgument(name = "address", type = "string", description = "trap address (0.0.0.0 by default)", optional = true) })
+	public void openTrapPort(String[] args) {
+		try {
+			String name = args[0];
+			int port = 162;
+			if (args.length > 1)
+				port = Integer.valueOf(args[1]);
+
+			String address = "0.0.0.0";
+			if (args.length > 2)
+				address = args[2];
+
+			SnmpTrapBinding binding = new SnmpTrapBinding();
+			binding.setName(name);
+			binding.setBindAddress(new InetSocketAddress(address, port));
+			trap.open(binding);
+
+			context.println("opened");
+		} catch (Throwable t) {
+			context.println("cannot open trap port, " + t.getMessage());
+		}
+	}
+
+	@ScriptUsage(description = "close trap port", arguments = { @ScriptArgument(name = "name", type = "string", description = "trap binding name") })
+	public void closeTrapPort(String[] args) {
+		try {
+			trap.close(args[0]);
+			context.println("closed");
+		} catch (IOException e) {
+			context.println("cannot close port, " + e.getMessage());
+		}
 	}
 
 	@ScriptUsage(description = "trace snmp trap packet")

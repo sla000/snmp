@@ -21,6 +21,7 @@ import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -29,7 +30,12 @@ import java.util.concurrent.CopyOnWriteArraySet;
 import org.apache.felix.ipojo.annotations.Component;
 import org.apache.felix.ipojo.annotations.Invalidate;
 import org.apache.felix.ipojo.annotations.Provides;
+import org.apache.felix.ipojo.annotations.Requires;
 import org.apache.felix.ipojo.annotations.Validate;
+import org.araqne.confdb.Config;
+import org.araqne.confdb.ConfigDatabase;
+import org.araqne.confdb.ConfigService;
+import org.araqne.confdb.Predicates;
 import org.araqne.snmp.SnmpTrap;
 import org.araqne.snmp.SnmpTrapBinding;
 import org.araqne.snmp.SnmpTrapReceiver;
@@ -61,6 +67,10 @@ import org.snmp4j.util.ThreadPool;
 public class SnmpTrapServiceImpl implements SnmpTrapService, CommandResponder {
 	private final Logger logger = LoggerFactory.getLogger(SnmpTrapServiceImpl.class.getName());
 	private final Charset charset = Charset.forName("utf-8");
+
+	@Requires
+	private ConfigService conf;
+
 	private ConcurrentMap<String, SnmpTrapBinding> bindings;
 	private ConcurrentMap<String, SnmpListener> listeners;
 
@@ -76,6 +86,20 @@ public class SnmpTrapServiceImpl implements SnmpTrapService, CommandResponder {
 
 	@Validate
 	public void start() {
+		ConfigDatabase db = conf.ensureDatabase("araqne-snmp");
+		Collection<SnmpTrapProfile> profiles = db.find(SnmpTrapProfile.class, null).getDocuments(SnmpTrapProfile.class);
+		for (SnmpTrapProfile profile : profiles) {
+			try {
+				InetAddress addr = InetAddress.getByName(profile.getAddress());
+				SnmpTrapBinding binding = new SnmpTrapBinding();
+				binding.setName(profile.getName());
+				binding.setBindAddress(new InetSocketAddress(addr, profile.getPort()));
+				binding.setThreadCount(profile.getTheadCount());
+				open(binding, false);
+			} catch (Throwable t) {
+				logger.error("");
+			}
+		}
 	}
 
 	@Invalidate
@@ -117,6 +141,10 @@ public class SnmpTrapServiceImpl implements SnmpTrapService, CommandResponder {
 
 	@Override
 	public void open(SnmpTrapBinding binding) throws IOException {
+		open(binding, true);
+	}
+
+	private void open(SnmpTrapBinding binding, boolean saveConfig) throws IOException {
 		if (binding.getName() == null || binding.getName().isEmpty())
 			throw new IllegalArgumentException("empty binding name");
 
@@ -141,6 +169,16 @@ public class SnmpTrapServiceImpl implements SnmpTrapService, CommandResponder {
 
 			listeners.put(binding.getName(), new SnmpListener(snmp, threadPool));
 			logger.info("araqne snmp: opened {} [{}]", binding.getName(), binding.getListenAddress());
+
+			if (saveConfig) {
+				SnmpTrapProfile profile = new SnmpTrapProfile();
+				profile.setName(binding.getName());
+				profile.setAddress(binding.getListenAddress().getHostName());
+				profile.setPort(binding.getListenAddress().getPort());
+				profile.setTheadCount(binding.getThreadCount());
+				ConfigDatabase db = conf.ensureDatabase("araqne-snmp");
+				db.add(profile);
+			}
 		} catch (IOException e) {
 			bindings.remove(binding.getName());
 			throw e;
@@ -158,6 +196,11 @@ public class SnmpTrapServiceImpl implements SnmpTrapService, CommandResponder {
 		SnmpTrapBinding binding = bindings.remove(name);
 		if (binding == null)
 			throw new IllegalStateException("snmp trap binding not found: " + name);
+
+		ConfigDatabase db = conf.ensureDatabase("araqne-snmp");
+		Config c = db.findOne(SnmpTrapProfile.class, Predicates.field("name", name));
+		if (c != null)
+			c.remove();
 
 		logger.info("araqne snmp: closed {} [{}]", binding.getName(), binding.getListenAddress());
 	}

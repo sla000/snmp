@@ -7,7 +7,7 @@
 	<artifactId>araqne-snmp</artifactId>
 	<packaging>bundle</packaging>
 	<name>Araqne SNMP</name>
-	<version>1.3.0</version>
+	<version>1.4.0</version>
 
 	<repositories>
 		<repository>
@@ -124,6 +124,11 @@
 			<groupId>org.apache.felix</groupId>
 			<artifactId>org.apache.felix.ipojo.annotations</artifactId>
 			<version>1.4.0</version>
+		</dependency>
+		<dependency>
+			<groupId>org.araqne</groupId>
+			<artifactId>araqne-confdb</artifactId>
+			<version>0.11.1</version>
 		</dependency>
 	</dependencies>
 </project>
